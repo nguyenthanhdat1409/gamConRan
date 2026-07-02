@@ -66,6 +66,7 @@ class Snake {
     this.body = [];
     this.radius = radiusOf(this.mass);
     this.seedTrail(); // tạo sẵn thân dài đúng kích thước ngay khi sinh
+    this.buildBody(); // dựng body ngay để snapshot không lỗi ở tick đầu
     // AI
     this.roamAngle = this.angle;
     this.aiTimer = 0;
@@ -414,7 +415,7 @@ class Room {
   snapshot(includeFood, includeMeta) {
     const snakes = [];
     for (const s of this.snakes) {
-      if (!s.alive) continue;
+      if (!s.alive || !s.body || s.body.length === 0) continue;
       const pts = s.body;
       // gửi thưa "xương sống" (spacing theo bán kính) -> nhẹ băng thông
       const spacing = Math.max(14, s.radius * 1.3);
