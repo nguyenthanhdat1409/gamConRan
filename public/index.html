@@ -19,7 +19,7 @@
 
   <!-- Bảng xếp hạng -->
   <div id="leaderboard" class="hidden">
-    <div class="lb-title">BẢNG XẾP HẠNG</div>
+    <div class="lb-title">ĐỘ BỰ (điểm)</div>
     <div id="lbList"></div>
   </div>
 
@@ -71,6 +71,19 @@
 
       <button id="enterBtn">VÀO CHƠI NGAY</button>
       <button id="backBtn" class="secondary">Quay lại</button>
+    </div>
+  </div>
+
+  <!-- Màn CHIẾN THẮNG -->
+  <div id="winover" class="overlay hidden">
+    <div class="card win">
+      <h1 class="title">🏆 CHIẾN THẮNG!</h1>
+      <p class="subtitle">Bạn là người sống sót cuối cùng!</p>
+      <div class="result">
+        <div>Độ bự: <b id="winScore">0</b></div>
+      </div>
+      <button id="winReplayBtn">CHƠI LẠI</button>
+      <button id="winHomeBtn" class="secondary">Về trang chủ</button>
     </div>
   </div>
 

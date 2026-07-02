@@ -9,7 +9,8 @@ const MIN_MASS = 8;
 const NORMAL_SPEED = 8.8; // px / tick (server ~20 tick/s)
 const BOOST_SPEED = 16;
 const MAX_TURN = 0.42; // rad / tick (rẽ nhạy hơn)
-const FOOD_TARGET = 260;
+const FOOD_TARGET = 200;  // mức tối thiểu luôn giữ
+const FOOD_MAX = 340;     // trần khi mọc thêm ngẫu nhiên
 const BEAST_COUNT = 3; // số quái (khủng long) đi vòng vòng
 const BEAST_SPEED = 3.2;
 
@@ -66,6 +67,8 @@ class Snake {
     this.boosting = false;
     this.alive = true;
     this.spawnProtect = 0; // số tick bất tử sau khi sinh
+    this.speedMul = 1;     // hệ số tốc độ (khổng lồ < 1)
+    this.preyRange = 520;  // tầm săn mồi (con khác)
     this.pts = [{ x: this.x, y: this.y }];
     this.body = [];
     this.radius = radiusOf(this.mass) * this.fat;
@@ -129,7 +132,7 @@ class Room {
     this.members = new Map();
     this.foodTick = 0;
     for (let i = 0; i < FOOD_TARGET; i++) this.spawnFood();
-    this.refillBots();
+    this.ensureBots();
     for (let i = 0; i < beastCount; i++) this.spawnBeast();
   }
 
@@ -220,9 +223,11 @@ class Room {
   addBot(giant) {
     let s;
     if (giant) {
-      // bot mập khổng lồ: rất dày (fat cao) + dài vừa
-      s = new Snake(true, "👑 " + pick(GIANT_NAMES), "#f59e0b", rand(85, 115), rand(2.6, 3.0));
+      // bot mập khổng lồ: rất dày nhưng CHẬM hơn để né được
+      s = new Snake(true, "👑 " + pick(GIANT_NAMES), "#f59e0b", rand(80, 105), rand(2.4, 2.8));
       s.aggro = true;
+      s.speedMul = 0.78;   // đi chậm hơn
+      s.preyRange = 340;   // ít hung hăng, chỉ săn khi rất gần
     } else {
       // kích thước ngẫu nhiên: nhỏ tới vừa
       s = new Snake(true, pick(BOT_NAMES), pick(COLORS), rand(8, 42));
@@ -231,11 +236,12 @@ class Room {
     s.spawnProtect = 15;
     this.snakes.push(s);
   }
-  refillBots() {
+  // Bổ sung cho đủ 2 khổng lồ + (botCount-2) thường. Chỉ gọi lúc tạo phòng / khi người chơi vào.
+  ensureBots() {
     const aliveBots = this.snakes.filter((s) => s.isBot && s.alive);
     const giants = aliveBots.filter((s) => s.fat > 1.5).length;
     const normals = aliveBots.length - giants;
-    for (let i = giants; i < 2; i++) this.addBot(true); // luôn có 2 con khổng lồ
+    for (let i = giants; i < 2; i++) this.addBot(true);
     for (let i = normals; i < this.botCount - 2; i++) this.addBot(false);
     this.snakes = this.snakes.filter((s) => s.alive);
   }
@@ -263,9 +269,11 @@ class Room {
   spawnPlayer(socketId) {
     const m = this.members.get(socketId);
     if (!m) return null;
+    // trận mới: nếu bot đã thưa (do trận trước bị diệt) thì bổ sung lại cho đủ
+    this.ensureBots();
     const s = new Snake(false, m.name, pick(COLORS));
     this.placeSafely(s);
-    s.spawnProtect = 70; // ~3.5s bất tử khi mới vào
+    s.spawnProtect = 100; // ~5s bất tử khi mới vào
     this.snakes.push(s);
     m.snakeId = s.id;
     m.hasSpawned = true;
@@ -352,7 +360,7 @@ class Room {
     }
 
     if (s.aggro) {
-      let prey = null, pd = 520 ** 2;
+      let prey = null, pd = (s.preyRange || 520) ** 2;
       for (const o of this.snakes) {
         if (o === s || !o.alive || o.mass > s.mass * 0.85) continue;
         const d = dist2(s.x, s.y, o.x, o.y);
@@ -390,9 +398,9 @@ class Room {
 
     s.angle = angleLerp(s.angle, s.desired, MAX_TURN);
 
-    let sp = NORMAL_SPEED;
+    let sp = NORMAL_SPEED * (s.speedMul || 1);
     if (s.boosting && s.mass > MIN_MASS + 2) {
-      sp = BOOST_SPEED;
+      sp = BOOST_SPEED * (s.speedMul || 1);
       s.mass -= 0.16;
       if (Math.random() < 0.4) {
         const tail = s.pts[s.pts.length - 1];
@@ -466,10 +474,33 @@ class Room {
       }
     }
 
-    this.refillBots();
+    // dọn rắn chết (KHÔNG hồi sinh bot -> để có thể diệt hết mà thắng)
+    this.snakes = this.snakes.filter((s) => s.alive);
+
+    // trái cây: giữ mức tối thiểu + thỉnh thoảng mọc thêm ngẫu nhiên
     this.fillFood();
     this.foodTick++;
-    return deadPlayers;
+    if (this.foodTick % 40 === 0) {
+      const n = 4 + Math.floor(Math.random() * 7);
+      for (let i = 0; i < n && this.foods.length < FOOD_MAX; i++) this.spawnFood();
+    }
+
+    // Điều kiện THẮNG: chỉ còn 1 rắn sống và đó là người chơi
+    const winners = [];
+    const alive = this.snakes.filter((s) => s.alive);
+    if (alive.length === 1 && !alive[0].isBot) {
+      const w = alive[0];
+      for (const [sid, m] of this.members.entries()) {
+        if (m.snakeId === w.id) {
+          m.snakeId = null;
+          winners.push({ socketId: sid, score: Math.floor(w.mass) });
+        }
+      }
+      w.alive = false;
+      this.snakes = this.snakes.filter((s) => s.alive);
+    }
+
+    return { dead: deadPlayers, winners };
   }
 
   reportDeath(s, list) {

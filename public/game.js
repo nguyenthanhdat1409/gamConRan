@@ -17,6 +17,7 @@ const mctx = mini.getContext("2d");
 const menu = document.getElementById("menu");
 const lobby = document.getElementById("lobby");
 const gameover = document.getElementById("gameover");
+const winover = document.getElementById("winover");
 const hud = document.getElementById("hud");
 const connEl = document.getElementById("conn");
 
@@ -159,6 +160,11 @@ socket.on("dead", ({ score }) => {
   endGame(score);
 });
 
+socket.on("win", ({ score }) => {
+  if (state !== "playing") return;
+  endWin(score);
+});
+
 // ----- Flow -----
 function getName() {
   myName = (document.getElementById("playerName").value || "Bạn").trim().slice(0, 12) || "Bạn";
@@ -201,6 +207,14 @@ document.getElementById("homeBtn").addEventListener("click", () => {
   socket.emit("leave");
   goMenu();
 });
+document.getElementById("winReplayBtn").addEventListener("click", () => {
+  winover.classList.add("hidden");
+  socket.emit("spawn");
+});
+document.getElementById("winHomeBtn").addEventListener("click", () => {
+  socket.emit("leave");
+  goMenu();
+});
 document.getElementById("playerName").addEventListener("keydown", (e) => {
   if (e.key === "Enter") socket.emit("solo", { name: getName() });
 });
@@ -226,6 +240,7 @@ function goMenu() {
   leaderboardEl.classList.add("hidden");
   lobby.classList.add("hidden");
   gameover.classList.add("hidden");
+  winover.classList.add("hidden");
   menu.classList.remove("hidden");
 }
 
@@ -273,6 +288,7 @@ function startPlaying() {
   menu.classList.add("hidden");
   lobby.classList.add("hidden");
   gameover.classList.add("hidden");
+  winover.classList.add("hidden");
   hud.classList.remove("hidden");
   mini.classList.remove("hidden");
   leaderboardEl.classList.remove("hidden");
@@ -287,6 +303,15 @@ function endGame(score) {
   mini.classList.add("hidden");
   leaderboardEl.classList.add("hidden");
   gameover.classList.remove("hidden");
+}
+
+function endWin(score) {
+  state = "dead";
+  document.getElementById("winScore").textContent = score;
+  hud.classList.add("hidden");
+  mini.classList.add("hidden");
+  leaderboardEl.classList.add("hidden");
+  winover.classList.remove("hidden");
 }
 
 // ----- Bảng xếp hạng (cập nhật nhẹ, không mỗi frame) -----
@@ -590,7 +615,13 @@ function drawSnake(s) {
     ctx.lineJoin = "round";
     ctx.beginPath();
     ctx.moveTo(b[0], b[1]);
-    for (let i = 1; i < n; i++) ctx.lineTo(b[i * 2], b[i * 2 + 1]);
+    // đường cong mượt (quadratic qua trung điểm) -> hết giật với rắn bự
+    for (let i = 1; i < n - 1; i++) {
+      const x = b[i * 2], y = b[i * 2 + 1];
+      const mx = (x + b[(i + 1) * 2]) / 2, my = (y + b[(i + 1) * 2 + 1]) / 2;
+      ctx.quadraticCurveTo(x, y, mx, my);
+    }
+    ctx.lineTo(b[(n - 1) * 2], b[(n - 1) * 2 + 1]);
     // viền tối
     ctx.strokeStyle = shade(s.c, -45);
     ctx.lineWidth = r * 2 + 4;

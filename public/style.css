@@ -310,6 +310,17 @@ button.small {
 }
 .result b { color: #4ade80; font-size: 20px; }
 
+.card.win {
+  border-color: rgba(251, 191, 36, 0.6);
+  box-shadow: 0 0 60px rgba(251, 191, 36, 0.35);
+}
+.card.win .title {
+  background: linear-gradient(90deg, #fbbf24, #fde68a, #f59e0b);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
 /* ===== Nhãn "IT nhiều chuyện" với màu chạy vòng quanh ===== */
 .brand-anim {
   position: relative;

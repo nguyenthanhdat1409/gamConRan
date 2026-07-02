@@ -51,7 +51,7 @@ io.on("connection", (socket) => {
   // Chơi 1 mình: phòng riêng, vào chơi ngay
   socket.on("solo", ({ name } = {}) => {
     const id = "solo-" + socket.id;
-    const room = new Room(id, { solo: true, botCount: 10 });
+    const room = new Room(id, { solo: true, botCount: 7 });
     rooms.set(id, room);
     enterRoom(socket, room, cleanName(name));
   });
@@ -59,7 +59,7 @@ io.on("connection", (socket) => {
   // Tạo phòng nhiều người -> có mã
   socket.on("createRoom", ({ name } = {}) => {
     const code = genCode();
-    const room = new Room(code, { solo: false, botCount: 10, code });
+    const room = new Room(code, { solo: false, botCount: 7, code });
     rooms.set(code, room);
     enterRoom(socket, room, cleanName(name));
   });
@@ -132,9 +132,12 @@ setInterval(() => {
   const withMeta = frame % 5 === 0; // danh sách người chơi đã chết cho bảng xếp hạng
   for (const room of rooms.values()) {
     if (room.isEmpty()) continue; // phòng trống sẽ được dọn khi rời
-    const dead = room.step();
-    for (const d of dead) {
+    const res = room.step();
+    for (const d of res.dead) {
       io.to(d.socketId).emit("dead", { score: d.score });
+    }
+    for (const w of res.winners) {
+      io.to(w.socketId).emit("win", { score: w.score });
     }
     io.to(room.id).emit("state", room.snapshot(withFood, withMeta));
   }
