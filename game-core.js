@@ -65,6 +65,7 @@ class Snake {
     this.mass = startMass || BASE_MASS;
     this.boosting = false;
     this.alive = true;
+    this.spawnProtect = 0; // số tick bất tử sau khi sinh
     this.pts = [{ x: this.x, y: this.y }];
     this.body = [];
     this.radius = radiusOf(this.mass) * this.fat;
@@ -184,17 +185,51 @@ class Room {
   }
 
   // ---------- Bot ----------
+  // Tìm vị trí trống để sinh, tránh đè lên rắn/quái khác
+  safeSpawn() {
+    let best = { x: 0, y: 0 }, bestClear = -1;
+    for (let i = 0; i < 25; i++) {
+      const a = rand(0, Math.PI * 2);
+      const r = Math.sqrt(Math.random()) * (WORLD_R - 300);
+      const x = Math.cos(a) * r, y = Math.sin(a) * r;
+      let clear = 1e9;
+      for (const s of this.snakes) {
+        if (!s.alive) continue;
+        for (let j = 0; j < s.body.length; j += 3) {
+          const b = s.body[j];
+          const d = Math.hypot(x - b.x, y - b.y) - s.radius;
+          if (d < clear) clear = d;
+        }
+      }
+      for (const bt of this.beasts) {
+        const d = Math.hypot(x - bt.x, y - bt.y) - bt.r;
+        if (d < clear) clear = d;
+      }
+      if (clear > 280) return { x, y };
+      if (clear > bestClear) { bestClear = clear; best = { x, y }; }
+    }
+    return best;
+  }
+  placeSafely(s) {
+    const p = this.safeSpawn();
+    s.x = p.x; s.y = p.y;
+    s.seedTrail();
+    s.buildBody();
+  }
+
   addBot(giant) {
+    let s;
     if (giant) {
       // bot mập khổng lồ: rất dày (fat cao) + dài vừa
-      const s = new Snake(true, "👑 " + pick(GIANT_NAMES), "#f59e0b",
-        rand(85, 115), rand(2.6, 3.0));
+      s = new Snake(true, "👑 " + pick(GIANT_NAMES), "#f59e0b", rand(85, 115), rand(2.6, 3.0));
       s.aggro = true;
-      this.snakes.push(s);
     } else {
       // kích thước ngẫu nhiên: nhỏ tới vừa
-      this.snakes.push(new Snake(true, pick(BOT_NAMES), pick(COLORS), rand(8, 42)));
+      s = new Snake(true, pick(BOT_NAMES), pick(COLORS), rand(8, 42));
     }
+    this.placeSafely(s);
+    s.spawnProtect = 15;
+    this.snakes.push(s);
   }
   refillBots() {
     const aliveBots = this.snakes.filter((s) => s.isBot && s.alive);
@@ -229,6 +264,8 @@ class Room {
     const m = this.members.get(socketId);
     if (!m) return null;
     const s = new Snake(false, m.name, pick(COLORS));
+    this.placeSafely(s);
+    s.spawnProtect = 70; // ~3.5s bất tử khi mới vào
     this.snakes.push(s);
     m.snakeId = s.id;
     m.hasSpawned = true;
@@ -348,6 +385,7 @@ class Room {
 
   updateSnake(s) {
     if (!s.alive) return;
+    if (s.spawnProtect > 0) s.spawnProtect--;
     if (s.isBot) this.botThink(s);
 
     s.angle = angleLerp(s.angle, s.desired, MAX_TURN);
@@ -395,6 +433,7 @@ class Room {
     const deadPlayers = [];
     for (const s of this.snakes) {
       if (!s.alive) continue;
+      if (s.spawnProtect > 0) continue; // bất tử lúc mới sinh
       if (Math.hypot(s.x, s.y) > WORLD_R) {
         this.killSnake(s);
         this.reportDeath(s, deadPlayers);
@@ -473,6 +512,7 @@ class Room {
         a: Math.round(s.angle * 100) / 100,
         m: Math.floor(s.mass),
         p: s.isBot ? 0 : 1,
+        pr: s.spawnProtect > 0 ? 1 : 0,
         b,
       });
     }

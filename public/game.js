@@ -139,7 +139,7 @@ socket.on("state", (snap) => {
   if (myId != null) {
     const sm = snap.s.find((s) => s.id === myId);
     if (sm) {
-      serverMe = { x: sm.b[0], y: sm.b[1], a: sm.a, m: sm.m, r: sm.r, c: sm.c, n: sm.n };
+      serverMe = { x: sm.b[0], y: sm.b[1], a: sm.a, m: sm.m, r: sm.r, c: sm.c, n: sm.n, pr: sm.pr };
       if (local) {
         const ex = serverMe.x - local.x, ey = serverMe.y - local.y;
         const d = Math.hypot(ex, ey);
@@ -376,13 +376,14 @@ function snapToMap(sa, sb, alpha) {
       a: lerpAngle(s.a, o.a, alpha),
       m: o.m,
       p: o.p,
+      pr: o.pr,
       b,
     });
   }
   return out;
 }
 function cloneSnake(s) {
-  return { id: s.id, n: s.n, c: s.c, r: s.r, a: s.a, m: s.m, p: s.p, b: s.b.slice() };
+  return { id: s.id, n: s.n, c: s.c, r: s.r, a: s.a, m: s.m, p: s.p, pr: s.pr, b: s.b.slice() };
 }
 function lerpAngle(a, b, t) {
   let d = b - a;
@@ -464,7 +465,8 @@ function frame() {
   if (state === "playing" && local) {
     me = {
       id: myId, n: local.name, c: local.color, r: local.radius,
-      a: local.angle, m: local.mass, p: 1, b: buildLocalBody(),
+      a: local.angle, m: local.mass, p: 1,
+      pr: serverMe && serverMe.pr ? 1 : 0, b: buildLocalBody(),
     };
   }
 
@@ -605,6 +607,17 @@ function drawSnake(s) {
   }
 
   const hx = b[0], hy = b[1];
+
+  // khiên bất tử khi mới sinh
+  if (s.pr) {
+    const pulse = 1 + Math.sin(performance.now() / 150) * 0.12;
+    ctx.beginPath();
+    ctx.arc(hx, hy, r * 1.7 * pulse, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(120,220,255,0.7)";
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  }
+
   ctx.beginPath();
   ctx.arc(hx, hy, r * 1.08, 0, Math.PI * 2);
   ctx.fillStyle = shade(s.c, 20);
