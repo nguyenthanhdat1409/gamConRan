@@ -144,11 +144,14 @@ socket.on("state", (snap) => {
       if (local) {
         const ex = serverMe.x - local.x, ey = serverMe.y - local.y;
         const d = Math.hypot(ex, ey);
-        if (d > 300) {
+        if (d > 600) {
+          // lệch quá lớn (mất gói/lag nặng) -> đặt lại
           local.x = serverMe.x; local.y = serverMe.y;
           local.pts = [{ x: local.x, y: local.y }];
         } else {
-          local.x += ex * 0.06; local.y += ey * 0.06;
+          // kéo về mượt, lệch càng nhiều kéo càng nhanh nhưng không nhảy
+          const k = Math.min(0.25, Math.max(0.04, d / 800));
+          local.x += ex * k; local.y += ey * k;
         }
       }
     }

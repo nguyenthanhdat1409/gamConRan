@@ -151,7 +151,7 @@ class Room {
       type: Math.floor(rand(0, 3)),
     });
   }
-  updateBeasts() {
+  updateBeasts(scale) {
     for (const bt of this.beasts) {
       bt.turnTimer--;
       // đổi hướng ngẫu nhiên
@@ -163,8 +163,8 @@ class Room {
       if (Math.hypot(bt.x, bt.y) > WORLD_R - 260) {
         bt.angle = Math.atan2(-bt.y, -bt.x) + rand(-0.4, 0.4);
       }
-      bt.x += Math.cos(bt.angle) * bt.speed;
-      bt.y += Math.sin(bt.angle) * bt.speed;
+      bt.x += Math.cos(bt.angle) * bt.speed * scale;
+      bt.y += Math.sin(bt.angle) * bt.speed * scale;
     }
   }
 
@@ -391,25 +391,25 @@ class Room {
     s.desired = s.roamAngle;
   }
 
-  updateSnake(s) {
+  updateSnake(s, scale) {
     if (!s.alive) return;
     if (s.spawnProtect > 0) s.spawnProtect--;
     if (s.isBot) this.botThink(s);
 
-    s.angle = angleLerp(s.angle, s.desired, MAX_TURN);
+    s.angle = angleLerp(s.angle, s.desired, MAX_TURN * scale);
 
     let sp = NORMAL_SPEED * (s.speedMul || 1);
     if (s.boosting && s.mass > MIN_MASS + 2) {
       sp = BOOST_SPEED * (s.speedMul || 1);
-      s.mass -= 0.16;
+      s.mass -= 0.16 * scale;
       if (Math.random() < 0.4) {
         const tail = s.pts[s.pts.length - 1];
         this.spawnFood(tail.x + rand(-6, 6), tail.y + rand(-6, 6), 1,
           COLORS.indexOf(s.color) >= 0 ? COLORS.indexOf(s.color) : 0);
       }
     }
-    s.x += Math.cos(s.angle) * sp;
-    s.y += Math.sin(s.angle) * sp;
+    s.x += Math.cos(s.angle) * sp * scale;
+    s.y += Math.sin(s.angle) * sp * scale;
     s.pts.unshift({ x: s.x, y: s.y });
     s.buildBody();
 
@@ -435,8 +435,17 @@ class Room {
 
   // step trả về mảng socketId của người chơi vừa chết trong tick này
   step() {
-    this.updateBeasts();
-    for (const s of this.snakes) this.updateSnake(s);
+    // Bù nhịp theo thời gian thực: nếu server chạy chậm hơn 50ms/tick,
+    // rắn vẫn đi đúng tốc độ px/giây -> khớp với dự đoán ở client (hết giật ngược).
+    const now = Date.now();
+    if (!this.lastStep) this.lastStep = now - 50;
+    let scale = (now - this.lastStep) / 50;
+    this.lastStep = now;
+    if (scale < 0.2) scale = 0.2;
+    if (scale > 3) scale = 3;
+
+    this.updateBeasts(scale);
+    for (const s of this.snakes) this.updateSnake(s, scale);
 
     const deadPlayers = [];
     for (const s of this.snakes) {
