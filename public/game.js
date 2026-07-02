@@ -34,7 +34,7 @@ let bestRank = 999;
 let currentMode = "solo";
 
 const buffer = []; // {t, snap}
-const INTERP_DELAY = 110; // ms
+const INTERP_DELAY = 130; // ms (rắn khác)
 let foodStore = []; // [x,y,r,ci,...]
 let beastStore = []; // [{x,y,r,a,t}]
 let deadHumans = []; // tên người chơi đã chết
@@ -46,6 +46,26 @@ const cam = { x: 0, y: 0 };
 let curZoom = 1;
 const mouse = { x: 0, y: 0 };
 let boosting = false;
+
+// ----- Dự đoán phía client cho rắn của mình (phản hồi tức thì) -----
+// Khớp với hằng số server (perTick * 20 tick/s)
+const SPEED_PS = 8.8 * 20;   // px/giây
+const BOOST_PS = 16 * 20;
+const TURN_PS = 0.42 * 20;   // rad/giây
+const MIN_MASS = 8;
+let local = null;    // {x,y,angle,mass,radius,color,name,pts:[]}
+let serverMe = null; // vị trí server mới nhất của rắn mình
+let lastFrameT = performance.now();
+
+function neededCircles(mass) { return Math.round(10 + mass * 0.9); }
+function turnToward(a, target, max) {
+  let d = target - a;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  if (d > max) d = max;
+  if (d < -max) d = -max;
+  return a + d;
+}
 
 // ----- Canvas -----
 function resize() {
@@ -84,6 +104,8 @@ socket.on("joined", ({ mode }) => {
 socket.on("spawned", ({ id }) => {
   myId = id;
   bestRank = 999;
+  local = null;
+  serverMe = null;
   startPlaying();
 });
 
@@ -99,6 +121,24 @@ socket.on("state", (snap) => {
   if (snap.d) deadHumans = snap.d;
   buffer.push({ t: performance.now(), snap });
   while (buffer.length > 12) buffer.shift();
+
+  // hoà giải vị trí rắn của mình với server (nhẹ nhàng, tránh trôi)
+  if (myId != null) {
+    const sm = snap.s.find((s) => s.id === myId);
+    if (sm) {
+      serverMe = { x: sm.b[0], y: sm.b[1], a: sm.a, m: sm.m, r: sm.r, c: sm.c, n: sm.n };
+      if (local) {
+        const ex = serverMe.x - local.x, ey = serverMe.y - local.y;
+        const d = Math.hypot(ex, ey);
+        if (d > 300) {
+          local.x = serverMe.x; local.y = serverMe.y;
+          local.pts = [{ x: local.x, y: local.y }];
+        } else {
+          local.x += ex * 0.06; local.y += ey * 0.06;
+        }
+      }
+    }
+  }
 });
 
 socket.on("dead", ({ score }) => {
@@ -140,6 +180,8 @@ document.getElementById("playerName").addEventListener("keydown", (e) => {
 function goMenu() {
   state = "menu";
   myId = null;
+  local = null;
+  serverMe = null;
   buffer.length = 0;
   hud.classList.add("hidden");
   mini.classList.add("hidden");
@@ -305,24 +347,88 @@ function lerpAngle(a, b, t) {
   return a + d * t;
 }
 
+// ----- Dự đoán rắn của mình -----
+function initLocal() {
+  local = {
+    x: serverMe.x, y: serverMe.y, angle: serverMe.a,
+    mass: serverMe.m, radius: serverMe.r, color: serverMe.c, name: serverMe.n,
+    pts: [],
+  };
+  const dx = -Math.cos(local.angle), dy = -Math.sin(local.angle);
+  const gap = Math.max(3, local.radius * 0.5);
+  const need = neededCircles(local.mass) * gap + 40;
+  for (let d = 0; d <= need; d += 4) local.pts.push({ x: local.x + dx * d, y: local.y + dy * d });
+}
+
+function predict(dt) {
+  if (state !== "playing" || !serverMe) return;
+  if (!local) { initLocal(); return; }
+  local.mass = serverMe.m;
+  local.radius = serverMe.r;
+  local.color = serverMe.c;
+  local.name = serverMe.n;
+
+  const desired = Math.atan2(mouse.y - canvas.height / 2, mouse.x - canvas.width / 2);
+  local.angle = turnToward(local.angle, desired, TURN_PS * dt);
+  const sp = (boosting && local.mass > MIN_MASS + 2) ? BOOST_PS : SPEED_PS;
+  local.x += Math.cos(local.angle) * sp * dt;
+  local.y += Math.sin(local.angle) * sp * dt;
+  local.pts.unshift({ x: local.x, y: local.y });
+}
+
+function buildLocalBody() {
+  const r = local.radius;
+  const pts = local.pts;
+  const circGap = Math.max(3, r * 0.5);
+  const needDist = neededCircles(local.mass) * circGap + 40;
+  let acc = 0, cut = pts.length;
+  for (let i = 1; i < pts.length; i++) {
+    acc += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+    if (acc >= needDist) { cut = i + 1; break; }
+  }
+  if (pts.length > cut) pts.length = cut;
+
+  const spacing = Math.max(14, r * 1.3);
+  const b = [pts[0].x, pts[0].y];
+  let lx = pts[0].x, ly = pts[0].y;
+  for (let i = 1; i < pts.length; i++) {
+    const d = Math.hypot(pts[i].x - lx, pts[i].y - ly);
+    if (d >= spacing) { b.push(pts[i].x, pts[i].y); lx = pts[i].x; ly = pts[i].y; }
+  }
+  const tail = pts[pts.length - 1];
+  if (Math.hypot(tail.x - lx, tail.y - ly) > spacing * 0.5) b.push(tail.x, tail.y);
+  return b;
+}
+
 // ----- Render loop -----
 function frame() {
   requestAnimationFrame(frame);
+  const now = performance.now();
+  let dt = (now - lastFrameT) / 1000;
+  lastFrameT = now;
+  if (dt > 0.05) dt = 0.05; // chống nhảy khi chuyển tab
+
   const W = canvas.width, H = canvas.height;
   ctx.clearRect(0, 0, W, H);
   if (state !== "playing" && state !== "lobby" && state !== "dead") return;
 
-  const snakes = interpolated();
-  if (!snakes) return;
+  predict(dt);
 
-  // camera theo rắn của mình
+  const others = interpolated() || [];
+  // dựng rắn của mình từ dự đoán cục bộ
   let me = null;
-  for (const s of snakes) if (s.id === myId) me = s;
-  if (me) { cam.x = me.x = me.b[0]; cam.y = me.y = me.b[1]; }
-  else if (snakes.length) {
-    // lobby: nhìn quanh giữa bản đồ
-    if (state === "lobby") { cam.x = 0; cam.y = 0; }
+  if (state === "playing" && local) {
+    me = {
+      id: myId, n: local.name, c: local.color, r: local.radius,
+      a: local.angle, m: local.mass, p: 1, b: buildLocalBody(),
+    };
   }
+
+  const list = others.filter((s) => s.id !== myId);
+  if (me) list.push(me);
+
+  if (me) { cam.x = local.x; cam.y = local.y; }
+  else if (state === "lobby") { cam.x = 0; cam.y = 0; }
 
   const zoom = zoomLevel(me ? me.r : 8);
   curZoom = zoom;
@@ -343,13 +449,13 @@ function frame() {
   drawFood();
   drawBeasts();
 
-  const order = snakes.slice().sort((p, q) => p.m - q.m);
+  const order = list.slice().sort((p, q) => p.m - q.m);
   for (const s of order) drawSnake(s);
 
   ctx.restore();
 
-  drawMinimap(snakes);
-  updateHUD(snakes, me);
+  drawMinimap(list);
+  updateHUD(list, me);
 }
 
 function zoomLevel(r) {

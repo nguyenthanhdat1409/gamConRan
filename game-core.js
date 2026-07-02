@@ -6,9 +6,9 @@
 const WORLD_R = 2200;
 const BASE_MASS = 12;
 const MIN_MASS = 8;
-const NORMAL_SPEED = 6.8; // px / tick (server ~20 tick/s)
-const BOOST_SPEED = 12.5;
-const MAX_TURN = 0.30; // rad / tick
+const NORMAL_SPEED = 8.8; // px / tick (server ~20 tick/s)
+const BOOST_SPEED = 16;
+const MAX_TURN = 0.42; // rad / tick (rẽ nhạy hơn)
 const FOOD_TARGET = 260;
 const BEAST_COUNT = 3; // số quái (khủng long) đi vòng vòng
 const BEAST_SPEED = 3.2;
@@ -24,6 +24,7 @@ const BOT_NAMES = [
   "Gấu", "Xù", "Mập", "Cu Tí", "Bông", "Nhím", "Còi", "Mèo", "Ki Ki",
   "Đậu", "Bắp", "Tôm", "Cá Mập", "Rồng", "Hổ", "Sói", "Bọ", "Ong",
 ];
+const GIANT_NAMES = ["Trùm Bự", "Mập Ú", "Bá Đạo", "Boss", "Khổng Lồ", "Đại Ca"];
 
 const rand = (a, b) => a + Math.random() * (b - a);
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -48,13 +49,14 @@ let SID = 1;
 let BID = 1;
 
 class Snake {
-  constructor(isBot, name, color, startMass) {
+  constructor(isBot, name, color, startMass, fat) {
     const a = rand(0, Math.PI * 2);
     const r = rand(150, WORLD_R - 400);
     this.id = SID++;
     this.isBot = isBot;
     this.name = name || "Bạn";
     this.color = color || pick(COLORS);
+    this.fat = fat || 1; // hệ số mập (bot khổng lồ > 1)
     this.x = Math.cos(a) * r;
     this.y = Math.sin(a) * r;
     this.angle = rand(0, Math.PI * 2);
@@ -64,7 +66,7 @@ class Snake {
     this.alive = true;
     this.pts = [{ x: this.x, y: this.y }];
     this.body = [];
-    this.radius = radiusOf(this.mass);
+    this.radius = radiusOf(this.mass) * this.fat;
     this.seedTrail(); // tạo sẵn thân dài đúng kích thước ngay khi sinh
     this.buildBody(); // dựng body ngay để snapshot không lỗi ở tick đầu
     // AI
@@ -75,7 +77,7 @@ class Snake {
 
   // Đổ sẵn vệt phía sau đầu để rắn có độ dài đúng ngay khi xuất hiện
   seedTrail() {
-    const r = radiusOf(this.mass);
+    const r = radiusOf(this.mass) * this.fat;
     const gap = Math.max(3, r * 0.5);
     const need = neededCircles(this.mass) * gap + 30;
     const dx = -Math.cos(this.angle);
@@ -88,7 +90,7 @@ class Snake {
   }
 
   buildBody() {
-    const r = radiusOf(this.mass);
+    const r = radiusOf(this.mass) * this.fat;
     const gap = Math.max(3, r * 0.5);
     const count = neededCircles(this.mass);
     const body = [{ x: this.pts[0].x, y: this.pts[0].y }];
@@ -123,7 +125,7 @@ class Room {
     this.members = new Map();
     this.foodTick = 0;
     for (let i = 0; i < FOOD_TARGET; i++) this.spawnFood();
-    for (let i = 0; i < botCount; i++) this.addBot();
+    this.refillBots();
     for (let i = 0; i < beastCount; i++) this.spawnBeast();
   }
 
@@ -179,14 +181,24 @@ class Room {
   }
 
   // ---------- Bot ----------
-  addBot() {
-    // kích thước ngẫu nhiên: nhỏ tới vừa
-    const mass = rand(8, 42);
-    this.snakes.push(new Snake(true, pick(BOT_NAMES), pick(COLORS), mass));
+  addBot(giant) {
+    if (giant) {
+      // bot mập khổng lồ: rất dày (fat cao) + dài vừa
+      const s = new Snake(true, "👑 " + pick(GIANT_NAMES), "#f59e0b",
+        rand(85, 115), rand(2.6, 3.0));
+      s.aggro = true;
+      this.snakes.push(s);
+    } else {
+      // kích thước ngẫu nhiên: nhỏ tới vừa
+      this.snakes.push(new Snake(true, pick(BOT_NAMES), pick(COLORS), rand(8, 42)));
+    }
   }
   refillBots() {
-    const bots = this.snakes.filter((s) => s.isBot && s.alive).length;
-    for (let i = bots; i < this.botCount; i++) this.addBot();
+    const aliveBots = this.snakes.filter((s) => s.isBot && s.alive);
+    const giants = aliveBots.filter((s) => s.fat > 1.5).length;
+    const normals = aliveBots.length - giants;
+    for (let i = giants; i < 2; i++) this.addBot(true); // luôn có 2 con khổng lồ
+    for (let i = normals; i < this.botCount - 2; i++) this.addBot(false);
     this.snakes = this.snakes.filter((s) => s.alive);
   }
 
