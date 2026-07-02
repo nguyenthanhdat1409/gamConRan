@@ -1,7 +1,7 @@
 {
   "name": "ran-san-moi",
-  "version": "1.0.0",
-  "description": "Game rắn săn mồi nhiều người (bot) - Tiktok: IT nhiều chuyện",
+  "version": "2.0.0",
+  "description": "Game ran san moi nhieu nguoi choi (co bot) + choi don",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -10,6 +10,7 @@
     "node": ">=18"
   },
   "dependencies": {
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
   }
 }

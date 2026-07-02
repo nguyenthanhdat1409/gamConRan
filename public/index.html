@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Rắn Săn Mồi | Tiktok: IT nhiều chuyện</title>
+  <title>Rắn Săn Mồi</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -13,10 +13,11 @@
   <div id="hud" class="hidden">
     <div class="hud-item">Dài: <span id="score">0</span></div>
     <div class="hud-item">Hạng: <span id="rank">-</span></div>
+    <div class="hud-item">Người chơi: <span id="players">0</span></div>
   </div>
   <canvas id="minimap" class="hidden"></canvas>
 
-  <!-- Trang chủ -->
+  <!-- Trang chủ: chọn chế độ -->
   <div id="menu" class="overlay">
     <div class="card">
       <h1 class="title">🐍 RẮN SĂN MỒI</h1>
@@ -24,7 +25,8 @@
 
       <input id="playerName" type="text" maxlength="12" placeholder="Nhập tên của bạn..." />
 
-      <button id="playBtn">CHƠI NGAY</button>
+      <button id="soloBtn">CHƠI 1 MÌNH (với bot)</button>
+      <button id="multiBtn" class="secondary">CHƠI NHIỀU NGƯỜI</button>
 
       <div class="how">
         <p><b>Cách chơi:</b></p>
@@ -33,10 +35,24 @@
           <li>⚡ Giữ chuột / phím cách để tăng tốc (mất bớt độ dài).</li>
           <li>🍎 Ăn mồi phát sáng để lớn lên.</li>
           <li>💥 Nếu <b>đầu</b> bạn đụng vào <b>thân</b> con khác → bạn chết thành mồi. Hãy khiến đối thủ đụng vào bạn!</li>
+          <li>🦖 Tránh xa <b>khủng long</b> đi vòng vòng — đụng vào là chết ngay!</li>
         </ul>
       </div>
 
-      <div class="brand">🎬 Tiktok: <b>IT nhiều chuyện</b></div>
+      <div class="brand-anim"><span>IT nhiều chuyện</span></div>
+    </div>
+  </div>
+
+  <!-- Phòng chờ nhiều người -->
+  <div id="lobby" class="overlay hidden">
+    <div class="card">
+      <h1 class="title">PHÒNG CHỜ</h1>
+      <p class="subtitle">Đang online: <b id="onlineCount">0</b> người • <span id="botCount">0</span> rắn máy</p>
+
+      <div class="playerlist" id="playerList"></div>
+
+      <button id="enterBtn">VÀO CHƠI NGAY</button>
+      <button id="backBtn" class="secondary">Quay lại</button>
     </div>
   </div>
 
@@ -50,12 +66,13 @@
         <div>Hạng cao nhất: <b id="finalRank">-</b></div>
       </div>
       <button id="replayBtn">CHƠI LẠI</button>
-      <div class="brand">🎬 Tiktok: <b>IT nhiều chuyện</b></div>
+      <button id="homeBtn" class="secondary">Về trang chủ</button>
     </div>
   </div>
 
-  <div class="watermark">Tiktok: IT nhiều chuyện</div>
+  <div id="conn" class="conn">Đang kết nối máy chủ...</div>
 
+  <script src="/socket.io/socket.io.js"></script>
   <script src="game.js"></script>
 </body>
 </html>
