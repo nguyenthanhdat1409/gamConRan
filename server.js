@@ -21,7 +21,7 @@ const rooms = new Map();
 
 function getPublicRoom() {
   if (!rooms.has(PUBLIC_ID)) {
-    rooms.set(PUBLIC_ID, new Room(PUBLIC_ID, { solo: false, botCount: 12 }));
+    rooms.set(PUBLIC_ID, new Room(PUBLIC_ID, { solo: false, botCount: 10 }));
   }
   return rooms.get(PUBLIC_ID);
 }
@@ -35,7 +35,7 @@ io.on("connection", (socket) => {
     let room;
     if (mode === "solo") {
       const id = "solo-" + socket.id;
-      room = new Room(id, { solo: true, botCount: 14 });
+      room = new Room(id, { solo: true, botCount: 10 });
       rooms.set(id, room);
     } else {
       room = getPublicRoom();
@@ -91,7 +91,8 @@ let frame = 0;
 
 setInterval(() => {
   frame++;
-  const withFood = frame % 3 === 0; // gửi mồi 1/3 số tick cho nhẹ
+  const withFood = frame % 4 === 0; // gửi mồi 1/4 số tick cho nhẹ băng thông
+  const withMeta = frame % 5 === 0; // danh sách người chơi đã chết cho bảng xếp hạng
   for (const room of rooms.values()) {
     // bỏ qua phòng solo hoàn toàn trống (giữ phòng public luôn chạy)
     if (room.solo && room.isEmpty()) continue;
@@ -99,7 +100,7 @@ setInterval(() => {
     for (const d of dead) {
       io.to(d.socketId).emit("dead", { score: d.score });
     }
-    io.to(room.id).emit("state", room.snapshot(withFood));
+    io.to(room.id).emit("state", room.snapshot(withFood, withMeta));
   }
 }, TICK_MS);
 

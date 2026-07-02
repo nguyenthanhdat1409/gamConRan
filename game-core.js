@@ -48,7 +48,7 @@ let SID = 1;
 let BID = 1;
 
 class Snake {
-  constructor(isBot, name, color) {
+  constructor(isBot, name, color, startMass) {
     const a = rand(0, Math.PI * 2);
     const r = rand(150, WORLD_R - 400);
     this.id = SID++;
@@ -59,16 +59,31 @@ class Snake {
     this.y = Math.sin(a) * r;
     this.angle = rand(0, Math.PI * 2);
     this.desired = this.angle;
-    this.mass = BASE_MASS;
+    this.mass = startMass || BASE_MASS;
     this.boosting = false;
     this.alive = true;
     this.pts = [{ x: this.x, y: this.y }];
     this.body = [];
     this.radius = radiusOf(this.mass);
+    this.seedTrail(); // tạo sẵn thân dài đúng kích thước ngay khi sinh
     // AI
     this.roamAngle = this.angle;
     this.aiTimer = 0;
     this.aggro = Math.random() < 0.55;
+  }
+
+  // Đổ sẵn vệt phía sau đầu để rắn có độ dài đúng ngay khi xuất hiện
+  seedTrail() {
+    const r = radiusOf(this.mass);
+    const gap = Math.max(3, r * 0.5);
+    const need = neededCircles(this.mass) * gap + 30;
+    const dx = -Math.cos(this.angle);
+    const dy = -Math.sin(this.angle);
+    const pts = [];
+    for (let d = 0; d <= need; d += 4) {
+      pts.push({ x: this.x + dx * d, y: this.y + dy * d });
+    }
+    this.pts = pts;
   }
 
   buildBody() {
@@ -164,7 +179,9 @@ class Room {
 
   // ---------- Bot ----------
   addBot() {
-    this.snakes.push(new Snake(true, pick(BOT_NAMES), pick(COLORS)));
+    // kích thước ngẫu nhiên: nhỏ tới vừa
+    const mass = rand(8, 42);
+    this.snakes.push(new Snake(true, pick(BOT_NAMES), pick(COLORS), mass));
   }
   refillBots() {
     const bots = this.snakes.filter((s) => s.isBot && s.alive).length;
@@ -174,7 +191,7 @@ class Room {
 
   // ---------- Người chơi ----------
   addMember(socketId, name) {
-    this.members.set(socketId, { name: name || "Bạn", snakeId: null });
+    this.members.set(socketId, { name: name || "Bạn", snakeId: null, hasSpawned: false });
   }
   removeMember(socketId) {
     const m = this.members.get(socketId);
@@ -190,7 +207,16 @@ class Room {
     const s = new Snake(false, m.name, pick(COLORS));
     this.snakes.push(s);
     m.snakeId = s.id;
+    m.hasSpawned = true;
     return s;
+  }
+  // Người chơi thật đang chờ hồi sinh (đã từng vào chơi nhưng đang chết)
+  deadHumans() {
+    const names = [];
+    for (const m of this.members.values()) {
+      if (m.hasSpawned && m.snakeId == null) names.push(m.name);
+    }
+    return names;
   }
   setInput(socketId, desired, boost) {
     const m = this.members.get(socketId);
@@ -385,14 +411,26 @@ class Room {
   }
 
   // ---------- Snapshot gửi cho client ----------
-  snapshot(includeFood) {
+  snapshot(includeFood, includeMeta) {
     const snakes = [];
     for (const s of this.snakes) {
       if (!s.alive) continue;
-      const b = new Array(s.body.length * 2);
-      for (let i = 0; i < s.body.length; i++) {
-        b[i * 2] = Math.round(s.body[i].x);
-        b[i * 2 + 1] = Math.round(s.body[i].y);
+      const pts = s.body;
+      // gửi thưa "xương sống" (spacing theo bán kính) -> nhẹ băng thông
+      const spacing = Math.max(14, s.radius * 1.3);
+      const b = [Math.round(pts[0].x), Math.round(pts[0].y)];
+      let lx = pts[0].x, ly = pts[0].y;
+      for (let i = 1; i < pts.length; i++) {
+        const d = Math.hypot(pts[i].x - lx, pts[i].y - ly);
+        if (d >= spacing) {
+          b.push(Math.round(pts[i].x), Math.round(pts[i].y));
+          lx = pts[i].x; ly = pts[i].y;
+        }
+      }
+      // đảm bảo có điểm đuôi
+      const tail = pts[pts.length - 1];
+      if (Math.hypot(tail.x - lx, tail.y - ly) > spacing * 0.5) {
+        b.push(Math.round(tail.x), Math.round(tail.y));
       }
       snakes.push({
         id: s.id,
@@ -401,6 +439,7 @@ class Room {
         r: Math.round(s.radius * 10) / 10,
         a: Math.round(s.angle * 100) / 100,
         m: Math.floor(s.mass),
+        p: s.isBot ? 0 : 1,
         b,
       });
     }
@@ -424,6 +463,9 @@ class Room {
         f[i * 4 + 3] = fo.c;
       }
       snap.f = f;
+    }
+    if (includeMeta) {
+      snap.d = this.deadHumans();
     }
     return snap;
   }

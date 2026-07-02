@@ -23,6 +23,8 @@ const connEl = document.getElementById("conn");
 const scoreEl = document.getElementById("score");
 const rankEl = document.getElementById("rank");
 const playersEl = document.getElementById("players");
+const leaderboardEl = document.getElementById("leaderboard");
+const lbListEl = document.getElementById("lbList");
 
 // ----- State -----
 let state = "menu"; // menu | lobby | playing | dead
@@ -35,10 +37,13 @@ const buffer = []; // {t, snap}
 const INTERP_DELAY = 110; // ms
 let foodStore = []; // [x,y,r,ci,...]
 let beastStore = []; // [{x,y,r,a,t}]
+let deadHumans = []; // tên người chơi đã chết
+let myName = "Bạn";
 let lobbyInfo = { online: 0, playing: 0, bots: 0, names: [] };
 const BEAST_EMOJI = ["🦖", "🦕", "🐊"];
 
 const cam = { x: 0, y: 0 };
+let curZoom = 1;
 const mouse = { x: 0, y: 0 };
 let boosting = false;
 
@@ -91,6 +96,7 @@ socket.on("state", (snap) => {
   worldR = snap.w;
   if (snap.f) foodStore = snap.f;
   if (snap.k) beastStore = snap.k;
+  if (snap.d) deadHumans = snap.d;
   buffer.push({ t: performance.now(), snap });
   while (buffer.length > 12) buffer.shift();
 });
@@ -102,7 +108,8 @@ socket.on("dead", ({ score }) => {
 
 // ----- Flow -----
 function getName() {
-  return (document.getElementById("playerName").value || "Bạn").trim().slice(0, 12) || "Bạn";
+  myName = (document.getElementById("playerName").value || "Bạn").trim().slice(0, 12) || "Bạn";
+  return myName;
 }
 
 document.getElementById("soloBtn").addEventListener("click", () => {
@@ -136,6 +143,7 @@ function goMenu() {
   buffer.length = 0;
   hud.classList.add("hidden");
   mini.classList.add("hidden");
+  leaderboardEl.classList.add("hidden");
   lobby.classList.add("hidden");
   gameover.classList.add("hidden");
   menu.classList.remove("hidden");
@@ -181,6 +189,7 @@ function startPlaying() {
   gameover.classList.add("hidden");
   hud.classList.remove("hidden");
   mini.classList.remove("hidden");
+  leaderboardEl.classList.remove("hidden");
 }
 
 function endGame(score) {
@@ -190,7 +199,52 @@ function endGame(score) {
     bestRank === 999 ? "-" : "#" + bestRank;
   hud.classList.add("hidden");
   mini.classList.add("hidden");
+  leaderboardEl.classList.add("hidden");
   gameover.classList.remove("hidden");
+}
+
+// ----- Bảng xếp hạng (cập nhật nhẹ, không mỗi frame) -----
+setInterval(updateLeaderboard, 400);
+
+function updateLeaderboard() {
+  if (state !== "playing" || buffer.length === 0) return;
+  const snakes = buffer[buffer.length - 1].snap.s.slice();
+  snakes.sort((a, b) => b.m - a.m);
+
+  const TOP = 8;
+  let html = "";
+  const myIdx = snakes.findIndex((s) => s.id === myId);
+
+  const rowHtml = (rank, s) => {
+    let cls = s.p === 1 ? "human" : "bot";
+    if (s.id === myId) cls += " me";
+    const icon = s.id === myId ? "★" : (s.p === 1 ? "👤" : "");
+    return `<div class="lb-row ${cls}"><span class="lb-rank">${rank}</span>` +
+      `<span class="lb-name">${icon ? icon + " " : ""}${escapeHtml(s.n)}</span>` +
+      `<span class="lb-score">${s.m}</span></div>`;
+  };
+
+  const top = snakes.slice(0, TOP);
+  top.forEach((s, i) => { html += rowHtml(i + 1, s); });
+
+  // nếu mình ngoài top thì hiện thêm dòng của mình
+  if (myIdx >= TOP) {
+    html += `<div class="lb-sep">• • •</div>`;
+    html += rowHtml(myIdx + 1, snakes[myIdx]);
+  }
+
+  // người chơi thật đã chết
+  if (deadHumans && deadHumans.length) {
+    html += `<div class="lb-sep">💀 Đã bị hạ gục</div>`;
+    for (const n of deadHumans) {
+      const cls = n === myName ? "dead me" : "dead";
+      html += `<div class="lb-row ${cls}"><span class="lb-rank">–</span>` +
+        `<span class="lb-name">👤 ${escapeHtml(n)}</span>` +
+        `<span class="lb-score">chết</span></div>`;
+    }
+  }
+
+  lbListEl.innerHTML = html;
 }
 
 // ----- Gửi input đều đặn -----
@@ -235,13 +289,14 @@ function snapToMap(sa, sb, alpha) {
       r: s.r + (o.r - s.r) * alpha,
       a: lerpAngle(s.a, o.a, alpha),
       m: o.m,
+      p: o.p,
       b,
     });
   }
   return out;
 }
 function cloneSnake(s) {
-  return { id: s.id, n: s.n, c: s.c, r: s.r, a: s.a, m: s.m, b: s.b.slice() };
+  return { id: s.id, n: s.n, c: s.c, r: s.r, a: s.a, m: s.m, p: s.p, b: s.b.slice() };
 }
 function lerpAngle(a, b, t) {
   let d = b - a;
@@ -270,6 +325,7 @@ function frame() {
   }
 
   const zoom = zoomLevel(me ? me.r : 8);
+  curZoom = zoom;
 
   ctx.save();
   ctx.translate(W / 2, H / 2);
@@ -316,19 +372,17 @@ function drawGrid(zoom, W, H) {
 }
 
 function drawFood() {
-  const t = performance.now() / 400;
+  // vẽ mồi trong tầm nhìn thôi, không dùng shadowBlur -> mượt hơn nhiều
+  const halfW = canvas.width / 2 / curZoom + 40;
+  const halfH = canvas.height / 2 / curZoom + 40;
   for (let i = 0; i < foodStore.length; i += 4) {
-    const x = foodStore[i], y = foodStore[i + 1], r = foodStore[i + 2];
-    const col = COLORS[foodStore[i + 3]] || "#fff";
-    const pr = r + Math.sin(t + i) * 0.6;
+    const x = foodStore[i], y = foodStore[i + 1];
+    if (Math.abs(x - cam.x) > halfW || Math.abs(y - cam.y) > halfH) continue;
     ctx.beginPath();
-    ctx.arc(x, y, pr, 0, Math.PI * 2);
-    ctx.fillStyle = col;
-    ctx.shadowColor = col;
-    ctx.shadowBlur = 10;
+    ctx.arc(x, y, foodStore[i + 2], 0, Math.PI * 2);
+    ctx.fillStyle = COLORS[foodStore[i + 3]] || "#fff";
     ctx.fill();
   }
-  ctx.shadowBlur = 0;
 }
 
 function drawBeasts() {
@@ -376,17 +430,33 @@ function shade(hex, amt) {
 
 function drawSnake(s) {
   const r = s.r;
-  const nseg = s.b.length / 2;
-  for (let i = nseg - 1; i >= 0; i--) {
-    const x = s.b[i * 2], y = s.b[i * 2 + 1];
+  const b = s.b;
+  const n = b.length / 2;
+
+  if (n >= 2) {
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
     ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fillStyle = i % 2 === 0 ? s.c : shade(s.c, -25);
+    ctx.moveTo(b[0], b[1]);
+    for (let i = 1; i < n; i++) ctx.lineTo(b[i * 2], b[i * 2 + 1]);
+    // viền tối
+    ctx.strokeStyle = shade(s.c, -45);
+    ctx.lineWidth = r * 2 + 4;
+    ctx.stroke();
+    // thân
+    ctx.strokeStyle = s.c;
+    ctx.lineWidth = r * 2;
+    ctx.stroke();
+  } else {
+    ctx.beginPath();
+    ctx.arc(b[0], b[1], r, 0, Math.PI * 2);
+    ctx.fillStyle = s.c;
     ctx.fill();
   }
-  const hx = s.b[0], hy = s.b[1];
+
+  const hx = b[0], hy = b[1];
   ctx.beginPath();
-  ctx.arc(hx, hy, r * 1.05, 0, Math.PI * 2);
+  ctx.arc(hx, hy, r * 1.08, 0, Math.PI * 2);
   ctx.fillStyle = shade(s.c, 20);
   ctx.fill();
 
@@ -402,10 +472,42 @@ function drawSnake(s) {
     ctx.fillStyle = "#111"; ctx.fill();
   }
 
-  ctx.font = `600 ${Math.max(11, r * 0.9)}px Segoe UI`;
-  ctx.fillStyle = s.id === myId ? "#fff" : "rgba(255,255,255,0.8)";
+  drawName(s, hx, hy, r);
+}
+
+function drawName(s, hx, hy, r) {
   ctx.textAlign = "center";
-  ctx.fillText(s.n, hx, hy - r - 6);
+  const isMe = s.id === myId;
+  const isPlayer = s.p === 1;
+
+  if (isPlayer) {
+    // Người chơi thật: tên nổi bật + nền + biểu tượng, dễ tìm
+    const label = (isMe ? "★ " : "👤 ") + s.n;
+    const fs = Math.max(14, r * 1.05);
+    ctx.font = `800 ${fs}px Segoe UI`;
+    const w = ctx.measureText(label).width;
+    const y = hy - r - 12;
+    ctx.fillStyle = "rgba(0,0,0,0.5)";
+    roundRect(hx - w / 2 - 8, y - fs, w + 16, fs + 8, 8);
+    ctx.fill();
+    ctx.fillStyle = isMe ? "#fff" : "#ffe27a";
+    ctx.fillText(label, hx, y - fs * 0.18);
+  } else {
+    // Bot: tên mờ nhỏ cho đỡ rối
+    ctx.font = `600 ${Math.max(10, r * 0.7)}px Segoe UI`;
+    ctx.fillStyle = "rgba(255,255,255,0.38)";
+    ctx.fillText(s.n, hx, hy - r - 6);
+  }
+}
+
+function roundRect(x, y, w, h, rad) {
+  ctx.beginPath();
+  ctx.moveTo(x + rad, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rad);
+  ctx.arcTo(x + w, y + h, x, y + h, rad);
+  ctx.arcTo(x, y + h, x, y, rad);
+  ctx.arcTo(x, y, x + w, y, rad);
+  ctx.closePath();
 }
 
 function drawMinimap(snakes) {
@@ -421,12 +523,25 @@ function drawMinimap(snakes) {
     mctx.fillStyle = "#ff4d4d";
     mctx.fill();
   }
+  // vẽ bot trước, người chơi thật sau (nổi lên trên)
   for (const s of snakes) {
+    if (s.p === 1) continue;
     mctx.beginPath();
-    const px = c + s.b[0] * scale, py = c + s.b[1] * scale;
-    mctx.arc(px, py, s.id === myId ? 3.5 : 2, 0, Math.PI * 2);
-    mctx.fillStyle = s.id === myId ? "#fff" : s.c;
+    mctx.arc(c + s.b[0] * scale, c + s.b[1] * scale, 1.8, 0, Math.PI * 2);
+    mctx.fillStyle = s.c;
     mctx.fill();
+  }
+  for (const s of snakes) {
+    if (s.p !== 1) continue;
+    const px = c + s.b[0] * scale, py = c + s.b[1] * scale;
+    const me = s.id === myId;
+    mctx.beginPath();
+    mctx.arc(px, py, me ? 4 : 3.5, 0, Math.PI * 2);
+    mctx.fillStyle = me ? "#fff" : "#ffe27a";
+    mctx.fill();
+    mctx.lineWidth = 1.5;
+    mctx.strokeStyle = "rgba(0,0,0,0.6)";
+    mctx.stroke();
   }
 }
 
