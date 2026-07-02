@@ -1,0 +1,15 @@
+{
+  "name": "ran-san-moi",
+  "version": "1.0.0",
+  "description": "Game rắn săn mồi nhiều người (bot) - Tiktok: IT nhiều chuyện",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
