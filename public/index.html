@@ -32,7 +32,12 @@
       <input id="playerName" type="text" maxlength="12" placeholder="Nhập tên của bạn..." />
 
       <button id="soloBtn">CHƠI 1 MÌNH (với bot)</button>
-      <button id="multiBtn" class="secondary">CHƠI NHIỀU NGƯỜI</button>
+      <button id="createBtn" class="secondary">TẠO PHÒNG CHƠI VỚI BẠN</button>
+
+      <div class="joinbox">
+        <input id="roomCode" type="text" maxlength="4" placeholder="MÃ PHÒNG" />
+        <button id="joinBtn" class="secondary small">VÀO</button>
+      </div>
 
       <div class="how">
         <p><b>Cách chơi:</b></p>
@@ -53,7 +58,14 @@
   <div id="lobby" class="overlay hidden">
     <div class="card">
       <h1 class="title">PHÒNG CHỜ</h1>
-      <p class="subtitle">Đang online: <b id="onlineCount">0</b> người • <span id="botCount">0</span> rắn máy</p>
+
+      <div class="roomcode-box">
+        <div class="rc-label">MÃ PHÒNG — chia sẻ cho bạn bè</div>
+        <div class="rc-code" id="roomCodeShow">----</div>
+        <button id="copyCodeBtn" class="secondary small">📋 Sao chép mã</button>
+      </div>
+
+      <p class="subtitle">Đang trong phòng: <b id="onlineCount">0</b> người • <span id="botCount">0</span> rắn máy</p>
 
       <div class="playerlist" id="playerList"></div>
 

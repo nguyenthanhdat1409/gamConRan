@@ -195,6 +195,51 @@ button.secondary {
   border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
+button.small {
+  width: auto;
+  padding: 12px 18px;
+  font-size: 14px;
+  margin-bottom: 0;
+}
+
+.joinbox {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+.joinbox input {
+  flex: 1;
+  padding: 13px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(0, 0, 0, 0.3);
+  color: #fff;
+  font-size: 16px;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 4px;
+  font-weight: 700;
+  outline: none;
+}
+.joinbox input:focus { border-color: #22d3ee; }
+.joinbox input::placeholder { color: #7c88a0; letter-spacing: 2px; font-weight: 400; }
+
+.roomcode-box {
+  background: rgba(34, 211, 238, 0.1);
+  border: 1px solid rgba(34, 211, 238, 0.35);
+  border-radius: 16px;
+  padding: 14px;
+  margin-bottom: 16px;
+}
+.rc-label { font-size: 12px; color: #9fd8e6; margin-bottom: 4px; }
+.rc-code {
+  font-size: 38px;
+  font-weight: 800;
+  letter-spacing: 8px;
+  color: #22d3ee;
+  margin-bottom: 10px;
+}
+
 .playerlist {
   margin: 4px 0 18px;
   max-height: 180px;
@@ -216,6 +261,15 @@ button.secondary {
 .playerlist .dot {
   width: 10px; height: 10px; border-radius: 50%;
   background: #4ade80; flex: 0 0 auto;
+}
+.playerlist .row .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.playerlist .row .badge {
+  font-size: 11px; color: #ffe27a; background: rgba(255,226,122,0.15);
+  padding: 1px 7px; border-radius: 8px; font-weight: 700;
+}
+.playerlist .kick {
+  width: auto; margin: 0; padding: 3px 9px; font-size: 12px; font-weight: 700;
+  background: rgba(255, 80, 100, 0.85); color: #fff; border-radius: 8px;
 }
 .playerlist .empty { color: #7c88a0; font-size: 14px; padding: 6px 2px; }
 

@@ -31,7 +31,8 @@ const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const dist2 = (ax, ay, bx, by) => (ax - bx) ** 2 + (ay - by) ** 2;
 
 function radiusOf(mass) {
-  return 6 + Math.min(mass * 0.09, 20);
+  // ăn càng nhiều càng mập dần (tăng mạnh hơn + trần cao hơn)
+  return 6 + Math.min(mass * 0.13, 34);
 }
 function neededCircles(mass) {
   return Math.round(10 + mass * 0.9);
@@ -113,15 +114,17 @@ class Snake {
 }
 
 class Room {
-  constructor(id, { solo = false, botCount = 14, beastCount = BEAST_COUNT } = {}) {
+  constructor(id, { solo = false, botCount = 14, beastCount = BEAST_COUNT, code = null } = {}) {
     this.id = id;
     this.solo = solo;
+    this.code = code;      // mã phòng (null nếu solo)
+    this.host = null;      // socketId của chủ phòng
     this.botCount = botCount;
     this.beastCount = beastCount;
     this.snakes = [];
     this.foods = [];
     this.beasts = [];
-    // members: socketId -> { name, snakeId|null }
+    // members: socketId -> { name, snakeId|null, hasSpawned }
     this.members = new Map();
     this.foodTick = 0;
     for (let i = 0; i < FOOD_TARGET; i++) this.spawnFood();
@@ -205,6 +208,7 @@ class Room {
   // ---------- Người chơi ----------
   addMember(socketId, name) {
     this.members.set(socketId, { name: name || "Bạn", snakeId: null, hasSpawned: false });
+    if (!this.host) this.host = socketId; // người vào đầu tiên làm chủ phòng
   }
   removeMember(socketId) {
     const m = this.members.get(socketId);
@@ -213,6 +217,13 @@ class Room {
       if (s) s.alive = false; // biến mất, không rải mồi khi thoát
     }
     this.members.delete(socketId);
+    // chuyển quyền chủ phòng nếu chủ rời đi
+    if (this.host === socketId) {
+      this.host = this.members.size ? this.members.keys().next().value : null;
+    }
+  }
+  isHost(socketId) {
+    return this.host === socketId;
   }
   spawnPlayer(socketId) {
     const m = this.members.get(socketId);
@@ -250,13 +261,22 @@ class Room {
     return n;
   }
   lobbyInfo() {
-    const names = [];
-    for (const m of this.members.values()) names.push(m.name);
+    const players = [];
+    for (const [sid, m] of this.members.entries()) {
+      players.push({
+        id: sid,
+        name: m.name,
+        host: sid === this.host,
+        alive: m.snakeId != null,
+      });
+    }
     return {
+      code: this.code,
+      hostId: this.host,
       online: this.members.size,
       playing: this.humanAlive(),
       bots: this.snakes.filter((s) => s.isBot && s.alive).length,
-      names,
+      players,
     };
   }
   isEmpty() {

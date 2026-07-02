@@ -39,7 +39,9 @@ let foodStore = []; // [x,y,r,ci,...]
 let beastStore = []; // [{x,y,r,a,t}]
 let deadHumans = []; // tên người chơi đã chết
 let myName = "Bạn";
-let lobbyInfo = { online: 0, playing: 0, bots: 0, names: [] };
+let roomCode = null;
+let isHost = false;
+let lobbyInfo = { online: 0, playing: 0, bots: 0, players: [] };
 const BEAST_EMOJI = ["🦖", "🦕", "🐊"];
 
 const cam = { x: 0, y: 0 };
@@ -92,13 +94,24 @@ socket.on("connect_error", () => {
   connEl.classList.remove("hidden");
 });
 
-socket.on("joined", ({ mode }) => {
+socket.on("joined", ({ mode, code, host }) => {
   currentMode = mode;
+  roomCode = code || null;
+  isHost = !!host;
   if (mode === "solo") {
     socket.emit("spawn");
   } else {
     showLobby();
   }
+});
+
+socket.on("kicked", () => {
+  goMenu();
+  showConn("Bạn đã bị chủ phòng mời ra khỏi phòng.", 3000);
+});
+
+socket.on("joinError", ({ msg }) => {
+  showConn(msg || "Không vào được phòng.", 2500);
 });
 
 socket.on("spawned", ({ id }) => {
@@ -153,17 +166,32 @@ function getName() {
 }
 
 document.getElementById("soloBtn").addEventListener("click", () => {
-  socket.emit("join", { mode: "solo", name: getName() });
+  socket.emit("solo", { name: getName() });
 });
-document.getElementById("multiBtn").addEventListener("click", () => {
-  socket.emit("join", { mode: "public", name: getName() });
+document.getElementById("createBtn").addEventListener("click", () => {
+  socket.emit("createRoom", { name: getName() });
 });
+document.getElementById("joinBtn").addEventListener("click", joinByCode);
+document.getElementById("roomCode").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") joinByCode();
+});
+function joinByCode() {
+  const code = (document.getElementById("roomCode").value || "").trim().toUpperCase();
+  if (code.length < 3) { showConn("Nhập mã phòng (4 ký tự).", 2000); return; }
+  socket.emit("joinRoom", { name: getName(), code });
+}
+
 document.getElementById("enterBtn").addEventListener("click", () => {
   socket.emit("spawn");
 });
 document.getElementById("backBtn").addEventListener("click", () => {
   socket.emit("leave");
   goMenu();
+});
+document.getElementById("copyCodeBtn").addEventListener("click", () => {
+  if (!roomCode) return;
+  navigator.clipboard?.writeText(roomCode);
+  showConn("Đã sao chép mã: " + roomCode, 1500);
 });
 document.getElementById("replayBtn").addEventListener("click", () => {
   gameover.classList.add("hidden");
@@ -174,14 +202,24 @@ document.getElementById("homeBtn").addEventListener("click", () => {
   goMenu();
 });
 document.getElementById("playerName").addEventListener("keydown", (e) => {
-  if (e.key === "Enter") socket.emit("join", { mode: "solo", name: getName() });
+  if (e.key === "Enter") socket.emit("solo", { name: getName() });
 });
+
+let connTimer = null;
+function showConn(msg, ms) {
+  connEl.textContent = msg;
+  connEl.classList.remove("hidden");
+  if (connTimer) clearTimeout(connTimer);
+  if (ms) connTimer = setTimeout(() => connEl.classList.add("hidden"), ms);
+}
 
 function goMenu() {
   state = "menu";
   myId = null;
   local = null;
   serverMe = null;
+  roomCode = null;
+  isHost = false;
   buffer.length = 0;
   hud.classList.add("hidden");
   mini.classList.add("hidden");
@@ -200,23 +238,29 @@ function showLobby() {
 }
 
 function renderLobbyList() {
+  document.getElementById("roomCodeShow").textContent = roomCode || "----";
   document.getElementById("onlineCount").textContent = lobbyInfo.online;
   document.getElementById("botCount").textContent = lobbyInfo.bots;
   const list = document.getElementById("playerList");
-  list.innerHTML = "";
-  if (!lobbyInfo.names || lobbyInfo.names.length === 0) {
-    const e = document.createElement("div");
-    e.className = "empty";
-    e.textContent = "Chưa có ai... bạn là người đầu tiên!";
-    list.appendChild(e);
-    return;
+  const players = lobbyInfo.players || [];
+  let html = "";
+  if (players.length === 0) {
+    html = `<div class="empty">Chưa có ai... bạn là người đầu tiên!</div>`;
+  } else {
+    for (const p of players) {
+      const badges =
+        (p.host ? `<span class="badge">Chủ phòng</span>` : "") +
+        (p.alive ? `<span class="badge" style="color:#4ade80;background:rgba(74,222,128,.15)">Đang chơi</span>` : "");
+      const kickBtn = (isHost && !p.host)
+        ? `<button class="kick" data-id="${p.id}">Đá</button>` : "";
+      html += `<div class="row"><span class="dot"></span>` +
+        `<span class="nm">${escapeHtml(p.name)}</span>${badges}${kickBtn}</div>`;
+    }
   }
-  for (const n of lobbyInfo.names) {
-    const row = document.createElement("div");
-    row.className = "row";
-    row.innerHTML = `<span class="dot"></span>${escapeHtml(n)}`;
-    list.appendChild(row);
-  }
+  list.innerHTML = html;
+  list.querySelectorAll(".kick").forEach((btn) => {
+    btn.addEventListener("click", () => socket.emit("kick", { targetId: btn.dataset.id }));
+  });
 }
 
 function escapeHtml(s) {

@@ -16,37 +16,63 @@ app.get("*", (req, res) => {
 });
 
 // ---------- Quản lý phòng ----------
-const PUBLIC_ID = "public";
-const rooms = new Map();
+const rooms = new Map(); // id -> Room
 
-function getPublicRoom() {
-  if (!rooms.has(PUBLIC_ID)) {
-    rooms.set(PUBLIC_ID, new Room(PUBLIC_ID, { solo: false, botCount: 10 }));
-  }
-  return rooms.get(PUBLIC_ID);
+function cleanName(name) {
+  return String(name || "Bạn").trim().slice(0, 12) || "Bạn";
+}
+
+function genCode() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // bỏ ký tự dễ nhầm
+  let code;
+  do {
+    code = "";
+    for (let i = 0; i < 4; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  } while (rooms.has(code));
+  return code;
+}
+
+function enterRoom(socket, room, name) {
+  leaveCurrent(socket);
+  room.addMember(socket.id, name);
+  socket.data.roomId = room.id;
+  socket.join(room.id);
+  socket.emit("joined", {
+    room: room.id,
+    mode: room.solo ? "solo" : "room",
+    code: room.code,
+    host: room.isHost(socket.id),
+  });
+  broadcastLobby(room);
 }
 
 // socket.data.roomId lưu phòng hiện tại của mỗi kết nối
 io.on("connection", (socket) => {
-  socket.on("join", ({ mode, name } = {}) => {
-    leaveCurrent(socket);
-    const cleanName = String(name || "Bạn").trim().slice(0, 12) || "Bạn";
+  // Chơi 1 mình: phòng riêng, vào chơi ngay
+  socket.on("solo", ({ name } = {}) => {
+    const id = "solo-" + socket.id;
+    const room = new Room(id, { solo: true, botCount: 10 });
+    rooms.set(id, room);
+    enterRoom(socket, room, cleanName(name));
+  });
 
-    let room;
-    if (mode === "solo") {
-      const id = "solo-" + socket.id;
-      room = new Room(id, { solo: true, botCount: 10 });
-      rooms.set(id, room);
-    } else {
-      room = getPublicRoom();
+  // Tạo phòng nhiều người -> có mã
+  socket.on("createRoom", ({ name } = {}) => {
+    const code = genCode();
+    const room = new Room(code, { solo: false, botCount: 10, code });
+    rooms.set(code, room);
+    enterRoom(socket, room, cleanName(name));
+  });
+
+  // Vào phòng bằng mã
+  socket.on("joinRoom", ({ name, code } = {}) => {
+    const c = String(code || "").trim().toUpperCase();
+    const room = rooms.get(c);
+    if (!room || room.solo) {
+      socket.emit("joinError", { msg: "Không tìm thấy phòng với mã này!" });
+      return;
     }
-
-    room.addMember(socket.id, cleanName);
-    socket.data.roomId = room.id;
-    socket.join(room.id);
-
-    socket.emit("joined", { room: room.id, mode: mode || "public" });
-    broadcastLobby(room);
+    enterRoom(socket, room, cleanName(name));
   });
 
   socket.on("spawn", () => {
@@ -55,6 +81,17 @@ io.on("connection", (socket) => {
     const s = room.spawnPlayer(socket.id);
     if (s) socket.emit("spawned", { id: s.id });
     broadcastLobby(room);
+  });
+
+  // Chủ phòng đá người khác
+  socket.on("kick", ({ targetId } = {}) => {
+    const room = rooms.get(socket.data.roomId);
+    if (!room || !room.isHost(socket.id) || targetId === socket.id) return;
+    const target = io.sockets.sockets.get(targetId);
+    if (target && target.data.roomId === room.id) {
+      target.emit("kicked");
+      leaveCurrent(target);
+    }
   });
 
   socket.on("input", ({ a, boost } = {}) => {
@@ -74,8 +111,8 @@ function leaveCurrent(socket) {
   if (!room) return;
   socket.leave(id);
   room.removeMember(socket.id);
-  if (room.solo && room.isEmpty()) {
-    rooms.delete(id); // dọn phòng solo trống
+  if (room.isEmpty()) {
+    rooms.delete(id); // dọn phòng trống (cả solo lẫn phòng mã)
   } else {
     broadcastLobby(room);
   }
@@ -94,8 +131,7 @@ setInterval(() => {
   const withFood = frame % 4 === 0; // gửi mồi 1/4 số tick cho nhẹ băng thông
   const withMeta = frame % 5 === 0; // danh sách người chơi đã chết cho bảng xếp hạng
   for (const room of rooms.values()) {
-    // bỏ qua phòng solo hoàn toàn trống (giữ phòng public luôn chạy)
-    if (room.solo && room.isEmpty()) continue;
+    if (room.isEmpty()) continue; // phòng trống sẽ được dọn khi rời
     const dead = room.step();
     for (const d of dead) {
       io.to(d.socketId).emit("dead", { score: d.score });
