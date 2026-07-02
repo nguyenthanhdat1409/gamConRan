@@ -223,8 +223,8 @@ class Room {
   addBot(giant) {
     let s;
     if (giant) {
-      // bot mập khổng lồ: rất dày nhưng CHẬM hơn để né được
-      s = new Snake(true, "👑 " + pick(GIANT_NAMES), "#f59e0b", rand(80, 105), rand(2.4, 2.8));
+      // bot mập (đã giảm còn ~70% độ dày trước đây) + CHẬM hơn để né được
+      s = new Snake(true, "👑 " + pick(GIANT_NAMES), "#f59e0b", rand(80, 105), rand(1.7, 1.95));
       s.aggro = true;
       s.speedMul = 0.78;   // đi chậm hơn
       s.preyRange = 340;   // ít hung hăng, chỉ săn khi rất gần

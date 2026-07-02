@@ -35,7 +35,7 @@ let bestRank = 999;
 let currentMode = "solo";
 
 const buffer = []; // {t, snap}
-const INTERP_DELAY = 130; // ms (rắn khác)
+const INTERP_DELAY = 155; // ms (đệm chống giật cho rắn/quái khác)
 let foodStore = []; // [x,y,r,ci,...]
 let beastStore = []; // [{x,y,r,a,t}]
 let deadHumans = []; // tên người chơi đã chết
@@ -365,8 +365,8 @@ setInterval(() => {
   socket.emit("input", { a, boost: boosting });
 }, 50);
 
-// ----- Nội suy snapshot -----
-function interpolated() {
+// ----- Nội suy snapshot (rắn + quái) -----
+function sampleAt() {
   const target = performance.now() - INTERP_DELAY;
   if (buffer.length === 0) return null;
   let a = null, b = null;
@@ -377,10 +377,24 @@ function interpolated() {
   }
   if (!a) {
     const last = buffer[buffer.length - 1];
-    return snapToMap(last.snap, null, 0);
+    return { snakes: snapToMap(last.snap, null, 0), beasts: last.snap.k || [] };
   }
   const alpha = (target - a.t) / Math.max(1, b.t - a.t);
-  return snapToMap(a.snap, b.snap, alpha);
+  return {
+    snakes: snapToMap(a.snap, b.snap, alpha),
+    beasts: lerpBeasts(a.snap.k, b.snap.k, alpha),
+  };
+}
+function lerpBeasts(ka, kb, alpha) {
+  if (!ka) return kb || [];
+  if (!kb) return ka;
+  const map = {};
+  for (const o of kb) map[o.id] = o;
+  return ka.map((b) => {
+    const o = map[b.id];
+    if (!o) return b;
+    return { id: b.id, x: b.x + (o.x - b.x) * alpha, y: b.y + (o.y - b.y) * alpha, r: b.r, a: o.a, t: b.t };
+  });
 }
 
 // Trả về mảng snake đã nội suy
@@ -484,7 +498,9 @@ function frame() {
 
   predict(dt);
 
-  const others = interpolated() || [];
+  const sample = sampleAt();
+  const others = sample ? sample.snakes : [];
+  if (sample) beastStore = sample.beasts;
   // dựng rắn của mình từ dự đoán cục bộ
   let me = null;
   if (state === "playing" && local) {
