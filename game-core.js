@@ -77,6 +77,8 @@ class Snake {
     // AI
     this.roamAngle = this.angle;
     this.aiTimer = 0;
+    this.avoidTimer = 0;
+    this.avoidAngle = this.angle;
     this.aggro = Math.random() < 0.55;
   }
 
@@ -365,18 +367,29 @@ class Room {
       }
     }
 
+    // Né thân rắn khác: tìm điểm nguy hiểm GẦN NHẤT (ổn định hơn "gặp là né")
+    let threat = null, td = Infinity;
     for (const o of this.snakes) {
       if (o === s || !o.alive) continue;
-      const m = o.radius + s.radius + 60;
+      const reach = o.radius + s.radius + 80;
       const bb = o._bb; // hộp bao từ tick trước -> bỏ qua nhanh rắn ở xa
-      if (bb && (headX < bb.minx - m || headX > bb.maxx + m || headY < bb.miny - m || headY > bb.maxy + m)) continue;
+      if (bb && (headX < bb.minx - reach || headX > bb.maxx + reach || headY < bb.miny - reach || headY > bb.maxy + reach)) continue;
+      const rr = (o.radius + s.radius + 55) ** 2;
       for (let i = 0; i < o.body.length; i += 2) {
         const b = o.body[i];
-        if (dist2(headX, headY, b.x, b.y) < (o.radius + s.radius + 24) ** 2) {
-          s.desired = Math.atan2(s.y - b.y, s.x - b.x);
-          return;
-        }
+        const d = dist2(headX, headY, b.x, b.y);
+        if (d < rr && d < td) { td = d; threat = b; }
       }
+    }
+    // Cam kết né trong vài tick -> hết dao động (bot khỏi rung khi ở gần rắn khác)
+    if (threat) {
+      s.avoidAngle = Math.atan2(s.y - threat.y, s.x - threat.x);
+      s.avoidTimer = 10;
+    }
+    if (s.avoidTimer > 0) {
+      s.avoidTimer--;
+      s.desired = s.avoidAngle;
+      return;
     }
 
     // dao động nhẹ để đường đi cong mềm như người thật (không đi thẳng đơ)
