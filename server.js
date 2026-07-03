@@ -132,16 +132,25 @@ setInterval(() => {
   const withMeta = frame % 5 === 0; // danh sách người chơi đã chết cho bảng xếp hạng
   for (const room of rooms.values()) {
     if (room.isEmpty()) continue; // phòng trống sẽ được dọn khi rời
-    const res = room.step();
-    for (const d of res.dead) {
-      io.to(d.socketId).emit("dead", { score: d.score });
+    try {
+      const res = room.step();
+      for (const d of res.dead) {
+        io.to(d.socketId).emit("dead", { score: d.score });
+      }
+      for (const w of res.winners) {
+        io.to(w.socketId).emit("win", { score: w.score });
+      }
+      io.to(room.id).emit("state", room.snapshot(withFood, withMeta));
+    } catch (err) {
+      // 1 tick lỗi không được phép làm sập cả server (gây đứng hình + giật)
+      console.error("Lỗi tick phòng", room.id, err);
     }
-    for (const w of res.winners) {
-      io.to(w.socketId).emit("win", { score: w.score });
-    }
-    io.to(room.id).emit("state", room.snapshot(withFood, withMeta));
   }
 }, TICK_MS);
+
+// Không để lỗi bất ngờ giết tiến trình -> tránh server restart giữa trận
+process.on("uncaughtException", (err) => console.error("uncaughtException:", err));
+process.on("unhandledRejection", (err) => console.error("unhandledRejection:", err));
 
 server.listen(PORT, () => {
   console.log(`Rắn săn mồi đang chạy tại http://localhost:${PORT}`);

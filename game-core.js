@@ -329,6 +329,22 @@ class Room {
     return this.members.size === 0;
   }
 
+  // Tính hộp bao thân cho mỗi rắn (dùng cho broad-phase va chạm & né tránh)
+  computeBBoxes() {
+    for (const s of this.snakes) {
+      if (!s.alive || !s.body.length) { s._bb = null; continue; }
+      let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
+      for (let i = 0; i < s.body.length; i++) {
+        const b = s.body[i];
+        if (b.x < minx) minx = b.x;
+        if (b.x > maxx) maxx = b.x;
+        if (b.y < miny) miny = b.y;
+        if (b.y > maxy) maxy = b.y;
+      }
+      s._bb = { minx, miny, maxx, maxy };
+    }
+  }
+
   // ---------- AI ----------
   botThink(s) {
     s.aiTimer--;
@@ -351,6 +367,9 @@ class Room {
 
     for (const o of this.snakes) {
       if (o === s || !o.alive) continue;
+      const m = o.radius + s.radius + 60;
+      const bb = o._bb; // hộp bao từ tick trước -> bỏ qua nhanh rắn ở xa
+      if (bb && (headX < bb.minx - m || headX > bb.maxx + m || headY < bb.miny - m || headY > bb.maxy + m)) continue;
       for (let i = 0; i < o.body.length; i += 2) {
         const b = o.body[i];
         if (dist2(headX, headY, b.x, b.y) < (o.radius + s.radius + 24) ** 2) {
@@ -454,6 +473,9 @@ class Room {
     this.updateBeasts(scale);
     for (const s of this.snakes) this.updateSnake(s, scale);
 
+    // Hộp bao (broad-phase) cho từng rắn -> bỏ qua nhanh các cặp ở xa
+    this.computeBBoxes();
+
     const deadPlayers = [];
     for (const s of this.snakes) {
       if (!s.alive) continue;
@@ -476,13 +498,17 @@ class Room {
       }
       for (const o of this.snakes) {
         if (o === s || !o.alive) continue;
+        const m = s.radius + o.radius + 8;
+        const bb = o._bb;
+        // broad-phase: đầu mình nằm ngoài hộp bao đối thủ -> khỏi xét
+        if (bb && (s.x < bb.minx - m || s.x > bb.maxx + m || s.y < bb.miny - m || s.y > bb.maxy + m)) continue;
         const rr = (s.radius * 0.7 + o.radius) ** 2;
         // Bỏ qua ĐẦU + khúc cổ của đối thủ: chỉ chết khi đầu mình đâm vào
         // phần THÂN thật sự. Nếu đầu-chạm-đầu thì không ai chết ở đây,
         // còn kẻ nào lao đầu vào thân người khác thì mới bị hạ.
         const startI = Math.min(o.body.length - 1, 2);
         let hit = false;
-        for (let i = startI; i < o.body.length; i++) {
+        for (let i = startI; i < o.body.length; i += 2) {
           const b = o.body[i];
           if (dist2(s.x, s.y, b.x, b.y) < rr) { hit = true; break; }
         }
