@@ -231,6 +231,7 @@ class Room {
     } else {
       // kích thước ngẫu nhiên: nhỏ tới vừa
       s = new Snake(true, pick(BOT_NAMES), pick(COLORS), rand(8, 42));
+      s.speedMul = rand(0.92, 1.06); // mỗi con nhanh/chậm khác nhau chút -> sống động
     }
     this.placeSafely(s);
     s.spawnProtect = 15;
@@ -359,6 +360,10 @@ class Room {
       }
     }
 
+    // dao động nhẹ để đường đi cong mềm như người thật (không đi thẳng đơ)
+    s.wander = (s.wander || 0) + 0.045;
+    const sway = Math.sin(s.wander) * 0.12;
+
     if (s.aggro) {
       let prey = null, pd = (s.preyRange || 520) ** 2;
       for (const o of this.snakes) {
@@ -374,21 +379,34 @@ class Room {
       }
     }
 
-    let food = null, fd = 460 ** 2;
-    for (const f of this.foods) {
-      const d = dist2(s.x, s.y, f.x, f.y);
-      if (d < fd) { fd = d; food = f; }
+    // Khóa mục tiêu mồi trong một khoảng (đỡ đổi hướng liên tục -> mượt hơn)
+    s.retarget = (s.retarget || 0) - 1;
+    let tgt = s.foodTgt;
+    // bỏ mục tiêu nếu đã ăn xong / tới nơi / hết hạn
+    if (tgt && (s.retarget <= 0 || dist2(s.x, s.y, tgt.x, tgt.y) < 40 * 40)) tgt = null;
+    if (!tgt) {
+      let food = null, fd = 520 ** 2;
+      for (const f of this.foods) {
+        const d = dist2(s.x, s.y, f.x, f.y);
+        if (d < fd) { fd = d; food = f; }
+      }
+      if (food) {
+        tgt = { x: food.x, y: food.y };
+        s.retarget = Math.floor(rand(22, 48));
+      }
     }
-    if (food) {
-      s.desired = Math.atan2(food.y - s.y, food.x - s.x);
+    s.foodTgt = tgt;
+    if (tgt) {
+      s.desired = Math.atan2(tgt.y - s.y, tgt.x - s.x) + sway;
       return;
     }
 
+    // Lang thang: đổi hướng thưa, chuyển hướng mượt + hơi lượn
     if (s.aiTimer <= 0) {
-      s.roamAngle += rand(-1, 1);
-      s.aiTimer = Math.floor(rand(20, 60));
+      s.roamAngle += rand(-0.7, 0.7);
+      s.aiTimer = Math.floor(rand(45, 100));
     }
-    s.desired = s.roamAngle;
+    s.desired = s.roamAngle + sway * 2;
   }
 
   updateSnake(s, scale) {

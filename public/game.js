@@ -149,8 +149,8 @@ socket.on("state", (snap) => {
           local.x = serverMe.x; local.y = serverMe.y;
           local.pts = [{ x: local.x, y: local.y }];
         } else {
-          // kéo về mượt, lệch càng nhiều kéo càng nhanh nhưng không nhảy
-          const k = Math.min(0.25, Math.max(0.04, d / 800));
+          // kéo về rất nhẹ khi lệch nhỏ (đỡ giật lúc bẻ cua), chỉ kéo mạnh khi lệch lớn
+          const k = d < 40 ? 0.03 : Math.min(0.18, d / 1100);
           local.x += ex * k; local.y += ey * k;
         }
       }
@@ -366,7 +366,7 @@ setInterval(() => {
   if (state !== "playing") return;
   const a = Math.atan2(mouse.y - canvas.height / 2, mouse.x - canvas.width / 2);
   socket.emit("input", { a, boost: boosting });
-}, 50);
+}, 33);
 
 // ----- Nội suy snapshot (rắn + quái) -----
 function sampleAt() {
@@ -468,22 +468,20 @@ function buildLocalBody() {
   const pts = local.pts;
   const circGap = Math.max(3, r * 0.5);
   const needDist = neededCircles(local.mass) * circGap + 40;
+  // cắt vệt tới độ dài cần thiết
   let acc = 0, cut = pts.length;
   for (let i = 1; i < pts.length; i++) {
     acc += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
     if (acc >= needDist) { cut = i + 1; break; }
   }
   if (pts.length > cut) pts.length = cut;
-
-  const spacing = Math.max(14, r * 1.3);
-  const b = [pts[0].x, pts[0].y];
-  let lx = pts[0].x, ly = pts[0].y;
-  for (let i = 1; i < pts.length; i++) {
-    const d = Math.hypot(pts[i].x - lx, pts[i].y - ly);
-    if (d >= spacing) { b.push(pts[i].x, pts[i].y); lx = pts[i].x; ly = pts[i].y; }
+  // Vẽ từ TOÀN BỘ điểm dày (mỗi frame 1 điểm) -> ổn định, mượt khi bẻ cua
+  // (không lấy mẫu thưa lại mỗi frame nên không bị rung/trượt mẫu)
+  const b = new Array(pts.length * 2);
+  for (let i = 0; i < pts.length; i++) {
+    b[i * 2] = pts[i].x;
+    b[i * 2 + 1] = pts[i].y;
   }
-  const tail = pts[pts.length - 1];
-  if (Math.hypot(tail.x - lx, tail.y - ly) > spacing * 0.5) b.push(tail.x, tail.y);
   return b;
 }
 
