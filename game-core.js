@@ -361,8 +361,8 @@ class Room {
     }
 
     // dao động nhẹ để đường đi cong mềm như người thật (không đi thẳng đơ)
-    s.wander = (s.wander || 0) + 0.045;
-    const sway = Math.sin(s.wander) * 0.12;
+    s.wander = (s.wander || 0) + 0.05;
+    const sway = Math.sin(s.wander) * 0.1;
 
     if (s.aggro) {
       let prey = null, pd = (s.preyRange || 520) ** 2;
@@ -379,32 +379,21 @@ class Room {
       }
     }
 
-    // Khóa mục tiêu mồi trong một khoảng (đỡ đổi hướng liên tục -> mượt hơn)
-    s.retarget = (s.retarget || 0) - 1;
-    let tgt = s.foodTgt;
-    // bỏ mục tiêu nếu đã ăn xong / tới nơi / hết hạn
-    if (tgt && (s.retarget <= 0 || dist2(s.x, s.y, tgt.x, tgt.y) < 40 * 40)) tgt = null;
-    if (!tgt) {
-      let food = null, fd = 520 ** 2;
-      for (const f of this.foods) {
-        const d = dist2(s.x, s.y, f.x, f.y);
-        if (d < fd) { fd = d; food = f; }
-      }
-      if (food) {
-        tgt = { x: food.x, y: food.y };
-        s.retarget = Math.floor(rand(22, 48));
-      }
+    // Tìm mồi gần nhất; có "quán tính" nhẹ: chỉ đổi mục tiêu khi mồi mới gần hơn hẳn
+    let best = null, bd = 560 ** 2;
+    for (const f of this.foods) {
+      const d = dist2(s.x, s.y, f.x, f.y);
+      if (d < bd) { bd = d; best = f; }
     }
-    s.foodTgt = tgt;
-    if (tgt) {
-      s.desired = Math.atan2(tgt.y - s.y, tgt.x - s.x) + sway;
+    if (best) {
+      s.desired = Math.atan2(best.y - s.y, best.x - s.x) + sway;
       return;
     }
 
-    // Lang thang: đổi hướng thưa, chuyển hướng mượt + hơi lượn
+    // Không có mồi gần -> lang thang: đổi hướng thưa nhưng vẫn di chuyển + lượn nhẹ
     if (s.aiTimer <= 0) {
-      s.roamAngle += rand(-0.7, 0.7);
-      s.aiTimer = Math.floor(rand(45, 100));
+      s.roamAngle += rand(-0.8, 0.8);
+      s.aiTimer = Math.floor(rand(30, 70));
     }
     s.desired = s.roamAngle + sway * 2;
   }
