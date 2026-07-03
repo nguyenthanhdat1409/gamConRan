@@ -477,8 +477,12 @@ class Room {
       for (const o of this.snakes) {
         if (o === s || !o.alive) continue;
         const rr = (s.radius * 0.7 + o.radius) ** 2;
+        // Bỏ qua ĐẦU + khúc cổ của đối thủ: chỉ chết khi đầu mình đâm vào
+        // phần THÂN thật sự. Nếu đầu-chạm-đầu thì không ai chết ở đây,
+        // còn kẻ nào lao đầu vào thân người khác thì mới bị hạ.
+        const startI = Math.min(o.body.length - 1, 2);
         let hit = false;
-        for (let i = 0; i < o.body.length; i++) {
+        for (let i = startI; i < o.body.length; i++) {
           const b = o.body[i];
           if (dist2(s.x, s.y, b.x, b.y) < rr) { hit = true; break; }
         }
